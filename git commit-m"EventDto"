@@ -1,0 +1,19 @@
+using System.Text.Json.Serialization;
+
+namespace ComradesMarathonMVC.Models;
+
+public class EventDto
+{
+    [JsonPropertyName("eventId")]
+    public int EventId { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
+    public string Location { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string EventType { get; set; } = string.Empty;
+    public string? BannerImageUrl { get; set; }
+    public int OrganizerId { get; set; }
+    public List<CategoryDto> Categories { get; set; } = new();
+}
