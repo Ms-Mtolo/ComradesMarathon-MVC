@@ -1,0 +1,143 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ComradesMarathonMVC.Models;
+using ComradesMarathonMVC.Services;
+
+namespace ComradesMarathonMVC.Controllers
+{
+    [Authorize(Roles = "Organiser")]
+    public class OrganiserController : Controller
+    {
+        private readonly ApiService _api;
+        public OrganiserController(ApiService api) => _api = api;
+
+        // 1. Dashboard
+        public async Task<IActionResult> Index()
+        {
+            var res = await _api.GetAsync("api/events");
+
+            // Check if the API succeeded BEFORE parsing JSON
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorContent = await res.Content.ReadAsStringAsync();
+                Console.WriteLine($"[API ERROR] GET api/events -> {res.StatusCode}: {errorContent}");
+                TempData["Error"] = $"Could not load events. API returned {res.StatusCode}.";
+                return View(new List<EventDto>());
+            }
+
+            var events = await res.Content.ReadFromJsonAsync<List<EventDto>>() ?? new List<EventDto>();
+            return View(events);
+        }
+
+        // 2. Create/Edit Event
+        [HttpGet]
+        public IActionResult CreateEvent() => View();
+
+        [HttpPost]
+        public async Task<IActionResult> CreateEvent(EventDto dto, IFormFile banner)
+        {
+            if (banner != null && banner.Length > 0)
+            {
+                var uploadRes = await _api.PostMultipartAsync("api/events/upload-banner", banner);
+                if (uploadRes.IsSuccessStatusCode)
+                {
+                    var img = await uploadRes.Content.ReadFromJsonAsync<JsonElement>();
+                    dto.BannerImageUrl = img.GetProperty("url").GetString();
+                }
+            }
+
+            var createRes = await _api.PostAsync("api/events", dto);
+
+            if (createRes.IsSuccessStatusCode)
+            {
+                TempData["Success"] = "Event created successfully!";
+                return RedirectToAction("Index");
+            }
+
+            var error = await createRes.Content.ReadAsStringAsync();
+            TempData["Error"] = $"Failed to create event: {error}";
+            return View(dto);
+        }
+
+        // 3. Category Management
+        public async Task<IActionResult> Categories(int eventId)
+        {
+            var res = await _api.GetAsync($"api/events/{eventId}/categories");
+
+            //  Check if the API succeeded BEFORE parsing JSON
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorContent = await res.Content.ReadAsStringAsync();
+                Console.WriteLine($"[API ERROR] GET api/events/{eventId}/categories -> {res.StatusCode}: {errorContent}");
+                TempData["Error"] = $"Could not load categories. API returned {res.StatusCode}.";
+                ViewBag.EventId = eventId;
+                return View(new List<CategoryDto>());
+            }
+
+            var categories = await res.Content.ReadFromJsonAsync<List<CategoryDto>>() ?? new List<CategoryDto>();
+            ViewBag.EventId = eventId;
+            return View(categories);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> AddCategory(int eventId, CategoryDto dto)
+        {
+            var res = await _api.PostAsync($"api/events/{eventId}/categories", dto);
+
+            if (res.IsSuccessStatusCode)
+            {
+                TempData["Success"] = "Category added successfully!";
+            }
+            else
+            {
+                var error = await res.Content.ReadAsStringAsync();
+                TempData["Error"] = $"Failed to add category: {error}";
+            }
+
+            return RedirectToAction("Categories", new { eventId });
+        }
+
+        // 4. Enrolments Page
+        public async Task<IActionResult> Enrolments(int eventId)
+        {
+            var res = await _api.GetAsync($"api/events/{eventId}/enrolments");
+
+            //  Check if the API succeeded BEFORE parsing JSON
+            if (!res.IsSuccessStatusCode)
+            {
+                TempData["Error"] = "Could not load enrolments. Ensure the API is running and the endpoint exists.";
+                return View(new List<EnrolmentDto>());
+            }
+
+            var enrolments = await res.Content.ReadFromJsonAsync<List<EnrolmentDto>>() ?? new List<EnrolmentDto>();
+            ViewBag.EventId = eventId;
+            return View(enrolments);
+        }
+
+        // 5. Results Entry Page
+        [HttpGet]
+        public IActionResult CaptureResult(int enrolmentId)
+        {
+            ViewBag.EnrolmentId = enrolmentId;
+            return View(new ResultDto());
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> CaptureResult(int enrolmentId, ResultDto dto)
+        {
+            var res = await _api.PostAsync($"api/enrolments/{enrolmentId}/result", dto);
+
+            if (res.IsSuccessStatusCode)
+            {
+                TempData["Success"] = "Result published successfully!";
+                return RedirectToAction("Index");
+            }
+
+            var error = await res.Content.ReadAsStringAsync();
+            TempData["Error"] = $"Failed to save result: {error}";
+            ViewBag.EnrolmentId = enrolmentId;
+            return View(dto);
+        }
+    }
+}
