@@ -1,0 +1,96 @@
+using System.Text;
+using System.Text.Json;
+
+namespace ComradesMarathonMVC.Services;
+
+public class ApiService
+{
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public ApiService(IHttpClientFactory httpClientFactory, IHttpContextAccessor httpContextAccessor)
+    {
+        _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private HttpClient GetClient()
+    {
+        var client = _httpClientFactory.CreateClient("RaceDayApi");
+
+        if (client.BaseAddress == null)
+        {
+            throw new Exception("HttpClient BaseAddress is null. Check Program.cs and appsettings.json!");
+        }
+
+        var apiCookie = _httpContextAccessor.HttpContext?.Session.GetString("ApiCookie");
+        if (!string.IsNullOrEmpty(apiCookie))
+            client.DefaultRequestHeaders.Add("Cookie", apiCookie);
+
+        return client;
+    }
+
+    public async Task<HttpResponseMessage> LoginAsync(object dto)
+    {
+        // Changed to use GetClient() for consistency
+        var client = GetClient();
+        var content = new StringContent(JsonSerializer.Serialize(dto), Encoding.UTF8, "application/json");
+
+        // Note: No leading slash before "api/"
+        var response = await client.PostAsync("api/auth/login", content);
+
+        if (response.IsSuccessStatusCode)
+        {
+            if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+            {
+                var sessionCookie = cookies.FirstOrDefault(c => c.StartsWith(".AspNetCore.Session"));
+                if (sessionCookie != null)
+                    _httpContextAccessor.HttpContext!.Session.SetString("ApiCookie", sessionCookie);
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            var user = JsonSerializer.Deserialize<JsonElement>(body);
+
+            _httpContextAccessor.HttpContext!.Session.SetString(
+                "Role", user.GetProperty("role").GetString() ?? "Participant");
+            _httpContextAccessor.HttpContext!.Session.SetString(
+                "UserName", user.GetProperty("firstName").GetString() ?? "User");
+            _httpContextAccessor.HttpContext!.Session.SetString(
+                "Email", user.GetProperty("email").GetString() ?? string.Empty);
+        }
+
+        return response;
+    }
+
+    public async Task<HttpResponseMessage> LogoutAsync()
+    {
+        var response = await GetClient().PostAsync("api/auth/logout", null);
+        _httpContextAccessor.HttpContext!.Session.Clear();
+        return response;
+    }
+
+    public async Task<HttpResponseMessage> GetAsync(string url) => await GetClient().GetAsync(url);
+
+    public async Task<HttpResponseMessage> PostAsync(string url, object data)
+    {
+        var content = new StringContent(JsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
+        return await GetClient().PostAsync(url, content);
+    }
+
+    public async Task<HttpResponseMessage> PutAsync(string url, object data)
+    {
+        var content = new StringContent(JsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
+        return await GetClient().PutAsync(url, content);
+    }
+
+    public async Task<HttpResponseMessage> DeleteAsync(string url) => await GetClient().DeleteAsync(url);
+
+    public async Task<HttpResponseMessage> PostMultipartAsync(string url, IFormFile file)
+    {
+        var client = GetClient();
+        using var content = new MultipartFormDataContent();
+        var stream = file.OpenReadStream();
+        content.Add(new StreamContent(stream), "file", file.FileName);
+        return await client.PostAsync(url, content);
+    }
+}
