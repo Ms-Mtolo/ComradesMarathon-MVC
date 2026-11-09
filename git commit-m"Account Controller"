@@ -1,0 +1,92 @@
+using Microsoft.AspNetCore.Mvc;
+using ComradesMarathonMVC.Models;
+using ComradesMarathonMVC.Services;
+
+namespace ComradesMarathonMVC.Controllers
+{
+    public class AccountController : Controller
+    {
+        private readonly ApiService _api;
+        public AccountController(ApiService api) => _api = api;
+
+        [HttpGet]
+        public IActionResult Login()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Login(LoginDto dto)
+        {
+            var res = await _api.LoginAsync(dto);
+
+            if (res.IsSuccessStatusCode)
+            {
+                return RedirectToRoleDashboard();
+            }
+
+            var error = await res.Content.ReadAsStringAsync();
+            ViewBag.Error = $"API Error ({(int)res.StatusCode}): {error}";
+            return View(dto);
+        }
+
+        [HttpGet]
+        public IActionResult Register()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Register(RegisterDto dto)
+        {
+            if (dto.Password != dto.ConfirmPassword)
+            {
+                ViewBag.Error = "Passwords do not match.";
+                return View(dto);
+            }
+
+            try
+            {
+                var res = await _api.PostAsync("api/auth/signin", dto);
+
+                if (res.IsSuccessStatusCode)
+                {
+                    // Log them in automatically after registering
+                    await _api.LoginAsync(new LoginDto { Email = dto.Email, Password = dto.Password });
+                    return RedirectToRoleDashboard();
+                }
+
+                var errorJson = await res.Content.ReadAsStringAsync();
+                ViewBag.Error = $"API Error ({(int)res.StatusCode}): {errorJson}";
+                return View(dto);
+            }
+            catch (Exception ex)
+            {
+                ViewBag.Error = $"Connection Error: {ex.Message}";
+                return View(dto);
+            }
+        }
+
+        private IActionResult RedirectToRoleDashboard()
+        {
+            var role = HttpContext.Session.GetString("Role");
+
+            // Debugging line: Look at your Visual Studio Output window to see if this prints "Organiser" or "Participant"
+            Console.WriteLine($"[DEBUG LOGIN] Redirecting user with role: {role ?? "NULL"}");
+
+            if (role == "Organiser")
+                return RedirectToAction("Index", "Organiser");
+
+            if (role == "Participant")
+                return RedirectToAction("Index", "Participant");
+
+            return RedirectToAction("Index", "Home"); // fallback
+        }
+
+        public async Task<IActionResult> Logout()
+        {
+            await _api.LogoutAsync();
+            return RedirectToAction("Index", "Home");
+        }
+    }
+}
