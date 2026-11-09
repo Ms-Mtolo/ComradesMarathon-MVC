@@ -1,0 +1,22 @@
+
+using System.Text.Json.Serialization;
+
+namespace ComradesMarathonMVC.Models;
+
+public class EnrolmentDto
+{
+    [JsonPropertyName("enrolmentId")]
+    public int EnrolmentId { get; set; }
+
+    public int UserId { get; set; }
+    public int EventId { get; set; }
+    public int CategoryId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string PaymentStatus { get; set; } = string.Empty;
+    public decimal PaymentAmount { get; set; }
+    public string BibNumber { get; set; } = string.Empty;
+
+    public EventDto? Event { get; set; }
+    public CategoryDto? Category { get; set; }
+    public ResultDto? Result { get; set; }
+}
