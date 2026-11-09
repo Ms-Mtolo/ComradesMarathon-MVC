@@ -1,0 +1,100 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ComradesMarathonMVC.Models;
+using ComradesMarathonMVC.Services;
+
+namespace ComradesMarathonMVC.Controllers
+{
+    [Authorize(Roles = "Participant")]
+    public class ParticipantController : Controller
+    {
+        private readonly ApiService _api;
+        public ParticipantController(ApiService api) => _api = api;
+
+        // 1. Home Page (Events with filtering)
+        public async Task<IActionResult> Index(string? location, DateTime? date)
+        {
+            var url = "api/events";
+            // (Filtering logic can be appended to URL here if API supports it)
+
+            var res = await _api.GetAsync(url);
+
+            //  Check if the API succeeded BEFORE parsing JSON
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorContent = await res.Content.ReadAsStringAsync();
+                Console.WriteLine($"[API ERROR] GET {url} -> {res.StatusCode}: {errorContent}");
+                TempData["Error"] = $"Could not load events. API returned {res.StatusCode}.";
+                return View(new List<EventDto>());
+            }
+
+            var events = await res.Content.ReadFromJsonAsync<List<EventDto>>() ?? new List<EventDto>();
+            return View(events);
+        }
+
+        // 2. Full Event Information & Categories
+        public async Task<IActionResult> Details(int id)
+        {
+            var res = await _api.GetAsync($"api/events/{id}");
+
+            if (!res.IsSuccessStatusCode)
+            {
+                // Optionally log the error content here as well
+                return NotFound();
+            }
+
+            var ev = await res.Content.ReadFromJsonAsync<EventDto>();
+            return View(ev);
+        }
+
+        // 3. Enrol
+        [HttpPost]
+        public async Task<IActionResult> Enrol(int categoryId, int eventId)
+        {
+            var res = await _api.PostAsync("api/enrolments", new { CategoryId = categoryId });
+            if (res.IsSuccessStatusCode)
+            {
+                TempData["Success"] = "Successfully enrolled!";
+                return RedirectToAction("MyEnrolments");
+            }
+            TempData["Error"] = "Could not enrol.";
+            return RedirectToAction("Details", new { id = eventId });
+        }
+
+        // 4. My Enrolments & 5. My Results
+        public async Task<IActionResult> MyEnrolments()
+        {
+            var res = await _api.GetAsync("api/users/enrolments");
+
+            // Check if the API succeeded BEFORE parsing JSON
+            if (!res.IsSuccessStatusCode)
+            {
+                var errorContent = await res.Content.ReadAsStringAsync();
+                Console.WriteLine($"[API ERROR] GET api/users/enrolments -> {res.StatusCode}: {errorContent}");
+                TempData["Error"] = "Could not load your enrolments.";
+                return View(new List<EnrolmentDto>());
+            }
+
+            var enrolments = await res.Content.ReadFromJsonAsync<List<EnrolmentDto>>() ?? new List<EnrolmentDto>();
+            return View(enrolments);
+        }
+
+        // 6. Profile
+        public async Task<IActionResult> Profile()
+        {
+            var res = await _api.GetAsync("api/users/email");
+            if (!res.IsSuccessStatusCode) return RedirectToAction("Index", "Home");
+
+            var user = await res.Content.ReadFromJsonAsync<UsersDto>();
+            return View(user);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> UpdateProfile(UpdateProfileDto dto)
+        {
+            await _api.PutAsync("api/users/profile", dto);
+            TempData["Success"] = "Profile updated.";
+            return RedirectToAction("Profile");
+        }
+    }
+}
