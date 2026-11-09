@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "ComradesMarathonAPI.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "..\\ComradesMarathonMVC\\ComradesMarathonMVC.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
